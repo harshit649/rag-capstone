@@ -73,19 +73,22 @@ chunks = chunk_text(cleaned_words, size=120, overlap=20)
 # print(chunks[0])
 # print(chunks[20])
 
+def answer(query):
+    results = retrieve(query, chunks, k=3)
+    context = "\n\n".join(text for score, text in results)
+    prompt = f"""Use ONLY the context below to answer. If the answer isn't there, say you don't know
+    Context
+    {context}
+    Question
+    {query}"""
+    return generate(prompt)
 
-results = retrieve("why do we scale the dot products by the square root of dk?", chunks, k=3)
-for score, chunk in results:
-    print(round(float(score), 3), "→", chunk[:200])
-    print("---")
 
+# for score, chunk in results:
+#     print(round(float(score), 3), "→", chunk[:200])
+#     print("---")
 
-context = "\n\n".join(text for score, text in results)
-question = "{what is dot product}"
-prompt = f"""Use ONLY the context below to answer. If the answer isn't there, say you don't know
-Context
-{context}
-Question
-{question}"""
-print(generate(prompt))
+print(answer("why do we scale the dot products by the square root of dk?"))
+print(answer("what optimizer did they use?"))
+
             
