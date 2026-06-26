@@ -1,6 +1,7 @@
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 import numpy as np
+from generate import generate
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
@@ -77,3 +78,14 @@ results = retrieve("why do we scale the dot products by the square root of dk?",
 for score, chunk in results:
     print(round(float(score), 3), "→", chunk[:200])
     print("---")
+
+
+context = "\n\n".join(text for score, text in results)
+question = "{what is dot product}"
+prompt = f"""Use ONLY the context below to answer. If the answer isn't there, say you don't know
+Context
+{context}
+Question
+{question}"""
+print(generate(prompt))
+            
