@@ -121,3 +121,52 @@ def mrr(eval_set):
     print(f"MRR = {mrr}")
 
 mrr(eval_set)
+
+
+def faithfulness(query):
+    results = retrieve(query, chunks, k=3)
+    context = "\n\n".join(text for score, text in results)
+    answer_text = answer(query)                 # the answer being judged
+    judge_prompt = f"""You are evaluating whether an answer is faithful to a context.
+    An answer is faithful ONLY if every claim it makes is supported by the context.
+
+    Context:
+    {context}
+
+    Answer:
+    {answer_text}
+
+    Is every claim in the answer supported by the context above?
+    Reply with exactly one word: FAITHFUL or UNFAITHFUL."""
+    verdict = generate(judge_prompt)            # LLM as judge
+    print(f"{verdict.strip()}  ←  {query}")
+    return verdict
+
+faithfulness("what optimizer did they use?")
+faithfulness("why do we scale the dot products by √dk?")
+faithfulness("how many layers are in the encoder?")
+faithfulness("how many attention heads?")
+
+
+def judge(context, answer_text):
+    judge_prompt = f"""You are evaluating whether an answer is faithful to a context.
+An answer is faithful ONLY if every claim it makes is supported by the context.
+
+Context:
+{context}
+
+Answer:
+{answer_text}
+
+Is every claim in the answer supported by the context above?
+Reply with exactly one word: FAITHFUL or UNFAITHFUL."""
+    return generate(judge_prompt).strip()
+
+# real context for the optimizer question
+ctx = "\n\n".join(text for score, text in retrieve("what optimizer did they use?", chunks, k=3))
+
+# 1) a faithful answer (should say FAITHFUL)
+print(judge(ctx, "They used the Adam optimizer with β1=0.9, β2=0.98."))
+
+# 2) a HALLUCINATED answer — adds a claim the context never makes (should say UNFAITHFUL)
+print(judge(ctx, "They used the Adam optimizer, which Google invented in 2017 specifically for training Transformers."))
