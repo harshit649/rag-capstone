@@ -37,11 +37,6 @@ def chunk_text(text, size, overlap):
 
 import re
 def clean_text(text):
-    # words = text.split()
-    # position = words.index("Abstract")
-    # print("position", position)
-    # cleaned_words = " ".join(words[position+1:])
-    # return cleaned_words
     pos = text.find("Abstract")
     if pos != -1:
         text = text[pos + len("Abstract"):]
@@ -50,28 +45,13 @@ def clean_text(text):
     text = re.sub("[∗†‡]", "", text)
     return text
 
-# text = "the cat sat on the mat near the door"
-# print(chunk_text(text, 4, 2))
-
-# text = ("Retrieval augmented generation grounds a language model by fetching relevant "
-#         "documents before it answers which reduces hallucination and lets the model use "
-#         "knowledge that was never part of its original training data at all")
-
-# print(chunk_text(text, size=10, overlap=3))
-
 
 paper = read_pdf("data/papers/attention.pdf")
-# print("characters:", len(paper))
-# print(paper[:800])
 
 cleaned_words = clean_text(paper)
-# print("cleaned words", cleaned_words)
 
 chunks = chunk_text(cleaned_words, size=120, overlap=20)
-# print("num chunks:", len(chunks))
-# print("---")
-# print(chunks[0])
-# print(chunks[20])
+
 
 def answer(query):
     results = retrieve(query, chunks, k=3)
@@ -84,11 +64,60 @@ def answer(query):
     return generate(prompt)
 
 
-# for score, chunk in results:
-#     print(round(float(score), 3), "→", chunk[:200])
-#     print("---")
-
 print(answer("why do we scale the dot products by the square root of dk?"))
 print(answer("what optimizer did they use?"))
 
-            
+
+eval_set = [
+    ("why do we scale the dot products by √dk?",  15),
+    ("what optimizer did they use?",              31),
+    ("how many layers are in the encoder?",       10),
+    ("how many attention heads?",                 17),
+    ("what dataset was used for English-German?", 30),
+]
+
+# def find(keyword):
+#     for i, c in enumerate(chunks):
+#         if keyword.lower() in c.lower():
+#             print(i, "→", c[:160])
+#             print("---")
+
+# find("optimiser Adam") #             # optimizer question
+# # find("N = 6 ")  #done         # encoder layers  (try "identical layers" too)
+# find("parallel attention")           # attention heads (try "parallel attention" too)
+# find("4.5 million")   # dataset (try just "4.5 million" too)
+# # find("1√dk")    # done        # the scaling one (you saw this exact text earlier)
+# find("attention heads")
+# find("English german")
+
+
+# evaluation metrics
+def recall_at_k(eval_set, k=3):
+    hits = 0
+    for question, correct_id in eval_set:
+        results = retrieve(question, chunks, k)
+        retrieve_text = [text for score, text in results]
+        if chunks[correct_id] in retrieve_text:
+            hits +=1
+        else:
+            print(f"question miss {question} wanted chunk correct id {correct_id}")
+    
+    recall = hits / len(eval_set)
+    print(f"recall@{k} = {recall}")
+
+recall_at_k(eval_set, k=3)
+
+# mrr
+def mrr(eval_set):
+    total_rr = 0
+    for question, correct_id in eval_set:
+        results = retrieve(question, chunks, k=len(chunks))   # ALL chunks, fully ranked
+        retrieved_texts = [text for score, text in results]  # retrive text is actaully sorting the chunks and tehn giving
+        rank = retrieved_texts.index(chunks[correct_id]) + 1
+        rr = 1/ rank
+        total_rr += rr
+        print(f"rank {rank:2d}  ←  {question}")   # ← see where each lands
+    mrr = total_rr / len(eval_set)
+    print(f"MRR = {mrr}")
+
+mrr(eval_set)
