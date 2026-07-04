@@ -3,6 +3,7 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 from generate import generate
 
+print(">>> SCRIPT STARTED")   # put this as the FIRST line after imports
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
 def dot(a, b):
@@ -105,7 +106,7 @@ def recall_at_k(eval_set, k=3):
     recall = hits / len(eval_set)
     print(f"recall@{k} = {recall}")
 
-recall_at_k(eval_set, k=3)
+# recall_at_k(eval_set, k=3)
 
 # mrr
 def mrr(eval_set):
@@ -120,7 +121,7 @@ def mrr(eval_set):
     mrr = total_rr / len(eval_set)
     print(f"MRR = {mrr}")
 
-mrr(eval_set)
+# mrr(eval_set)
 
 
 def faithfulness(query):
@@ -142,10 +143,10 @@ def faithfulness(query):
     print(f"{verdict.strip()}  ←  {query}")
     return verdict
 
-faithfulness("what optimizer did they use?")
-faithfulness("why do we scale the dot products by √dk?")
-faithfulness("how many layers are in the encoder?")
-faithfulness("how many attention heads?")
+# faithfulness("what optimizer did they use?")
+# faithfulness("why do we scale the dot products by √dk?")
+# faithfulness("how many layers are in the encoder?")
+# faithfulness("how many attention heads?")
 
 
 def judge(context, answer_text):
@@ -166,7 +167,55 @@ Reply with exactly one word: FAITHFUL or UNFAITHFUL."""
 ctx = "\n\n".join(text for score, text in retrieve("what optimizer did they use?", chunks, k=3))
 
 # 1) a faithful answer (should say FAITHFUL)
-print(judge(ctx, "They used the Adam optimizer with β1=0.9, β2=0.98."))
+# print(judge(ctx, "They used the Adam optimizer with β1=0.9, β2=0.98."))
 
-# 2) a HALLUCINATED answer — adds a claim the context never makes (should say UNFAITHFUL)
-print(judge(ctx, "They used the Adam optimizer, which Google invented in 2017 specifically for training Transformers."))
+# # 2) a HALLUCINATED answer — adds a claim the context never makes (should say UNFAITHFUL)
+# print(judge(ctx, "They used the Adam optimizer, which Google invented in 2017 specifically for training Transformers."))
+
+
+
+## ragas
+
+# building eveal data set
+eval_data = []
+for question, correct_id in eval_set:
+    response = answer(question)
+    contexts = [texts for score, texts in retrieve(question , chunks , k=3)]
+    eval_data.append({"question": question, "response": response, "contexts": contexts})
+
+
+print("-----------------------")
+print("eval data 0", eval_data[0])
+
+
+# ---- RAGAS ----
+from ragas import evaluate, EvaluationDataset
+from ragas.dataset_schema import SingleTurnSample
+from ragas.metrics import Faithfulness
+from ragas.llms import llm_factory
+from groq import Groq
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from openai import OpenAI
+
+groq_client = OpenAI(
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url="https://api.groq.com/openai/v1",   # Groq's OpenAI-compatible endpoint
+)
+evaluator_llm = llm_factory("llama-3.3-70b-versatile", client=groq_client)
+
+samples = [
+    SingleTurnSample(
+        user_input=row["question"],
+        response=row["response"],
+        retrieved_contexts=row["contexts"],
+    )
+    for row in eval_data
+]
+dataset = EvaluationDataset(samples=samples)
+
+result = evaluate(dataset=dataset, metrics=[Faithfulness(llm=evaluator_llm)])
+print(result)
