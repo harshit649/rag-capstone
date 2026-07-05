@@ -106,7 +106,7 @@ def recall_at_k(eval_set, k=3):
     recall = hits / len(eval_set)
     print(f"recall@{k} = {recall}")
 
-# recall_at_k(eval_set, k=3)
+recall_at_k(eval_set, k=3)
 
 # mrr
 def mrr(eval_set):
@@ -121,7 +121,7 @@ def mrr(eval_set):
     mrr = total_rr / len(eval_set)
     print(f"MRR = {mrr}")
 
-# mrr(eval_set)
+mrr(eval_set)
 
 
 def faithfulness(query):
@@ -143,10 +143,10 @@ def faithfulness(query):
     print(f"{verdict.strip()}  ←  {query}")
     return verdict
 
-# faithfulness("what optimizer did they use?")
-# faithfulness("why do we scale the dot products by √dk?")
-# faithfulness("how many layers are in the encoder?")
-# faithfulness("how many attention heads?")
+faithfulness("what optimizer did they use?")
+faithfulness("why do we scale the dot products by √dk?")
+faithfulness("how many layers are in the encoder?")
+faithfulness("how many attention heads?")
 
 
 def judge(context, answer_text):
@@ -221,3 +221,98 @@ dataset = EvaluationDataset(samples=samples)
 
 result = evaluate(dataset=dataset, metrics=[Faithfulness(llm=evaluator_llm)])
 print(result)
+
+
+# hybrid search
+def keyword_score(query, doc)-> int: # return how many words matches b/w query and doc
+    # first split doc into chunks but not by doc.split()
+    d_words = set(re.findall(r"\w+",doc.lower()))
+    q_words = set(re.findall(r"\w+",query.lower()))
+    return len(q_words & d_words)
+
+def normalize(scores:list) -> list:
+    mn = min(scores)
+    mx = max(scores)
+    norm_score = []
+    for score in scores:
+        if mx == mn:
+            norm_score.append(0)
+            continue
+        norm_score.append((score-mn)/(mx - mn))
+
+    return norm_score
+
+def hybrid_retrieve(query, docs, k=3, alpha=0.5):
+    # 1. cosine score for every doc (semantic)
+    q = model.encode(query)
+    cos_scores = [cosine(q, model.encode(d)) for d in docs]
+
+    # 2. keyword score for every doc (lexical)
+    kw_scores = [keyword_score(query, d) for d in docs]
+
+    # 3. normalize BOTH to 0-1   ← the crucial step
+    cos_norm = normalize(cos_scores)
+    kw_norm  = normalize(kw_scores)
+
+    # 4. combine with weight alpha
+    final = [alpha*c + (1-alpha)*k for c, k in zip(cos_norm, kw_norm)]
+
+    # 5. sort docs by final score, take top-k
+    return sorted(zip(final, docs), reverse=True)[:k]
+
+
+
+print("--- hybrid test: dataset query ---")
+for score, text in hybrid_retrieve("what dataset was used for English-German?", chunks, k=3):
+    print(round(score, 3), text[:90])
+
+for a in [0.5, 0.8, 1.0]:
+    print(f"\n--- alpha = {a} ---")
+    for score, text in hybrid_retrieve("what dataset was used for English-German?", chunks, k=3, alpha=a):
+        print(round(score, 3), text[:80])
+
+
+q = "what dataset was used for English-German?"
+
+# pure cosine rank of chunk 30 (your ORIGINAL method)
+qv = model.encode(q)
+cos = [cosine(qv, model.encode(d)) for d in chunks]
+cos_ranked = sorted(range(len(chunks)), key=lambda i: cos[i], reverse=True)
+print("chunk 30 rank under PURE COSINE:", cos_ranked.index(30) + 1)
+
+# hybrid rank of chunk 30 at a few alphas
+for a in [0.0, 0.5, 0.8, 1.0]:
+    kw = [keyword_score(q, d) for d in chunks]
+    cn, kn = normalize(cos), normalize(kw)
+    final = [a*c + (1-a)*k for c, k in zip(cn, kn)]
+    ranked = sorted(range(len(chunks)), key=lambda i: final[i], reverse=True)
+    print(f"chunk 30 rank at alpha={a}:", ranked.index(30) + 1)
+
+
+
+def recall_at_k_hybrid(eval_set, k=3, alpha=0.5):
+    hits = 0
+    for question, correct_id in eval_set:
+        results = hybrid_retrieve(question, chunks, k, alpha)
+        retrieved = [text for score, text in results]
+        if chunks[correct_id] in retrieved:
+            hits += 1
+        else:
+            print(f"miss: {question}")
+    print(f"hybrid recall@{k} (alpha={alpha}) = {hits/len(eval_set)}")
+
+def mrr_hybrid(eval_set, alpha=0.5):
+    total_rr = 0
+    for question, correct_id in eval_set:
+        results = hybrid_retrieve(question, chunks, k=len(chunks), alpha=alpha)
+        retrieved = [text for score, text in results]
+        rank = retrieved.index(chunks[correct_id]) + 1
+        total_rr += 1/rank
+        print(f"rank {rank:2d} ← {question}")
+    print(f"hybrid MRR (alpha={alpha}) = {total_rr/len(eval_set)}")
+
+# baseline (pure cosine) for comparison
+print("=== BASELINE (cosine) ==="); recall_at_k(eval_set); mrr(eval_set)
+# hybrid at a few alphas
+for a in [0.3, 0.5, 0.7]:
+    print(f"=== HYBRID alpha={a} ==="); recall_at_k_hybrid(eval_set, alpha=a); mrr_hybrid(eval_set, alpha=a)
