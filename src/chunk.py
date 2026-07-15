@@ -65,8 +65,8 @@ def answer(query):
     return generate(prompt)
 
 
-print(answer("why do we scale the dot products by the square root of dk?"))
-print(answer("what optimizer did they use?"))
+# print(answer("why do we scale the dot products by the square root of dk?"))
+# print(answer("what optimizer did they use?"))
 
 
 eval_set = [
@@ -106,7 +106,7 @@ def recall_at_k(eval_set, k=3):
     recall = hits / len(eval_set)
     print(f"recall@{k} = {recall}")
 
-recall_at_k(eval_set, k=3)
+# recall_at_k(eval_set, k=3)
 
 # mrr
 def mrr(eval_set):
@@ -121,7 +121,7 @@ def mrr(eval_set):
     mrr = total_rr / len(eval_set)
     print(f"MRR = {mrr}")
 
-mrr(eval_set)
+# mrr(eval_set)
 
 
 def faithfulness(query):
@@ -143,10 +143,10 @@ def faithfulness(query):
     print(f"{verdict.strip()}  ←  {query}")
     return verdict
 
-faithfulness("what optimizer did they use?")
-faithfulness("why do we scale the dot products by √dk?")
-faithfulness("how many layers are in the encoder?")
-faithfulness("how many attention heads?")
+# faithfulness("what optimizer did they use?")
+# faithfulness("why do we scale the dot products by √dk?")
+# faithfulness("how many layers are in the encoder?")
+# faithfulness("how many attention heads?")
 
 
 def judge(context, answer_text):
@@ -263,13 +263,13 @@ def hybrid_retrieve(query, docs, k=3, alpha=0.5):
 
 
 print("--- hybrid test: dataset query ---")
-for score, text in hybrid_retrieve("what dataset was used for English-German?", chunks, k=3):
-    print(round(score, 3), text[:90])
+# for score, text in hybrid_retrieve("what dataset was used for English-German?", chunks, k=3):
+#     print(round(score, 3), text[:90])
 
-for a in [0.5, 0.8, 1.0]:
-    print(f"\n--- alpha = {a} ---")
-    for score, text in hybrid_retrieve("what dataset was used for English-German?", chunks, k=3, alpha=a):
-        print(round(score, 3), text[:80])
+# for a in [0.5, 0.8, 1.0]:
+#     print(f"\n--- alpha = {a} ---")
+#     for score, text in hybrid_retrieve("what dataset was used for English-German?", chunks, k=3, alpha=a):
+#         print(round(score, 3), text[:80])
 
 
 q = "what dataset was used for English-German?"
@@ -314,5 +314,52 @@ def mrr_hybrid(eval_set, alpha=0.5):
 # baseline (pure cosine) for comparison
 print("=== BASELINE (cosine) ==="); recall_at_k(eval_set); mrr(eval_set)
 # hybrid at a few alphas
-for a in [0.3, 0.5, 0.7]:
-    print(f"=== HYBRID alpha={a} ==="); recall_at_k_hybrid(eval_set, alpha=a); mrr_hybrid(eval_set, alpha=a)
+# for a in [0.3, 0.5, 0.7]:
+#     print(f"=== HYBRID alpha={a} ==="); recall_at_k_hybrid(eval_set, alpha=a); mrr_hybrid(eval_set, alpha=a)
+
+
+# chromadb
+import chromadb
+
+# persistent client — stores the DB on disk in ./chroma_db
+client = chromadb.PersistentClient(path="chroma_db")
+
+# create (or get) a collection — think of it as a "table" of vectors
+collection = client.get_or_create_collection(name="attention_paper", metadata={"hnsw:space": "cosine"})
+
+# only add if the collection is empty (so we don't re-add on every run)
+if collection.count() == 0:
+    ids = [f"chunk_{i}" for i in range(len(chunks))]
+    embeddings = [model.encode(c).tolist() for c in chunks]   # .tolist() → Chroma wants plain lists, not numpy
+    collection.add(ids=ids, embeddings=embeddings, documents=chunks)
+    print(f"added {len(chunks)} chunks to Chroma")
+else:
+    print(f"collection already has {collection.count()} chunks")
+
+def retrieve_chroma(query, k=3):
+    q_emb = model.encode(query).tolist()
+    results = collection.query(query_embeddings=[q_emb], n_results=k)
+    # results["documents"][0] is the list of top-k chunk texts
+    return results["documents"][0]
+
+print("--- chroma retrieve test ---")
+for doc in retrieve_chroma("what optimizer did they use?", k=3):
+       print(doc[:80])
+
+def recall_at_k_chroma(eval_set, k=3):
+    hits = 0
+    for question, correct_id in eval_set:
+        retrieved = retrieve_chroma(question, k)
+        if chunks[correct_id] in retrieved:
+            hits += 1
+        else:
+            print(f"chroma miss: {question}")
+    print(f"chroma recall@{k} = {hits/len(eval_set)}")
+
+recall_at_k_chroma(eval_set, k=3)
+
+print("=== chroma optimizer check ===")
+docs = retrieve_chroma("what optimizer did they use?", k=3)
+for d in docs:
+    print("•", d[:100])
+print("Adam chunk in results?", any("Adam" in d for d in docs))
