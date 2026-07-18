@@ -363,3 +363,35 @@ docs = retrieve_chroma("what optimizer did they use?", k=3)
 for d in docs:
     print("•", d[:100])
 print("Adam chunk in results?", any("Adam" in d for d in docs))
+
+
+
+##################################################
+# cross-encoder model
+from sentence_transformers import CrossEncoder
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")  # small, fast, standard reranker
+
+def rerank_retrieve(query, k=3, initial_k=10):
+    candidates = retrieve_chroma(query, k=initial_k)      # stage 1: fast, get 10
+    pairs = [[query, doc] for doc in candidates]
+    scores = reranker.predict(pairs)                       # stage 2: score each
+    # now: zip scores+candidates, sort by score desc, take top k, return the docs
+    return sorted(zip(scores,candidates),reverse = True)[:k]
+    ...
+
+
+print("--- rerank test: dataset query ---")
+for score, doc in rerank_retrieve("what dataset was used for English-German?", k=3):
+    print(round(float(score), 3), doc[:90])
+
+def recall_at_k_rerank(eval_set, k=3, initial_k=10):
+    hits = 0
+    for question, correct_id in eval_set:
+        retrieved = [doc for score, doc in rerank_retrieve(question, k, initial_k)]
+        if chunks[correct_id] in retrieved:
+            hits += 1
+        else:
+            print(f"rerank miss: {question}")
+    print(f"rerank recall@{k} = {hits/len(eval_set)}")
+
+recall_at_k_rerank(eval_set, k=3)
