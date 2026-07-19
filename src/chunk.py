@@ -189,38 +189,38 @@ print("eval data 0", eval_data[0])
 
 
 # ---- RAGAS ----
-from ragas import evaluate, EvaluationDataset
-from ragas.dataset_schema import SingleTurnSample
-from ragas.metrics import Faithfulness
-from ragas.llms import llm_factory
-from groq import Groq
-import os
-from dotenv import load_dotenv
-...
+# from ragas import evaluate, EvaluationDataset
+# from ragas.dataset_schema import SingleTurnSample
+# from ragas.metrics import Faithfulness
+# from ragas.llms import llm_factory
+# from groq import Groq
+# import os
+# from dotenv import load_dotenv
+# ...
 
 
-load_dotenv()
+# load_dotenv()
 
-from openai import OpenAI
+# from openai import OpenAI
 
-groq_client = OpenAI(
-    api_key=os.getenv("GROQ_API_KEY"),
-    base_url="https://api.groq.com/openai/v1",   # Groq's OpenAI-compatible endpoint
-)
-evaluator_llm = llm_factory("llama-3.3-70b-versatile", client=groq_client)
+# groq_client = OpenAI(
+#     api_key=os.getenv("GROQ_API_KEY"),
+#     base_url="https://api.groq.com/openai/v1",   # Groq's OpenAI-compatible endpoint
+# )
+# evaluator_llm = llm_factory("llama-3.3-70b-versatile", client=groq_client)
 
-samples = [
-    SingleTurnSample(
-        user_input=row["question"],
-        response=row["response"],
-        retrieved_contexts=row["contexts"],
-    )
-    for row in eval_data
-]
-dataset = EvaluationDataset(samples=samples)
+# samples = [
+#     SingleTurnSample(
+#         user_input=row["question"],
+#         response=row["response"],
+#         retrieved_contexts=row["contexts"],
+#     )
+#     for row in eval_data
+# ]
+# dataset = EvaluationDataset(samples=samples)
 
-result = evaluate(dataset=dataset, metrics=[Faithfulness(llm=evaluator_llm)])
-print(result)
+# result = evaluate(dataset=dataset, metrics=[Faithfulness(llm=evaluator_llm)])
+# print(result)
 
 
 # hybrid search

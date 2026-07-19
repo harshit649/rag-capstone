@@ -1,0 +1,10 @@
+pypdf
+sentence-transformers
+numpy
+groq
+python-dotenv
+openai
+ragas==0.4.3
+chromadb
+fastapi
+uvicorn
